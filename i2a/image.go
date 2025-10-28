@@ -2,13 +2,15 @@
 package i2a
 
 import (
+	"fmt"
 	"image"
 	"image/color"
-	_ "image/gif"
+	"image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
 	"math"
+	"time"
 
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
@@ -84,4 +86,23 @@ func colorToChar(col color.Color, charMap []rune) string {
 	r, g, b, _ := col.RGBA()
 	index := int(math.Round(float64(r+g+b) / 3 * float64(len(charMap)-1) / 0xffff))
 	return string(charMap[index])
+}
+
+// RenderGIF renders the provided GIF image to the terminal as ASCII art based on the given configuration.
+func RenderGIF(img *gif.GIF, config Config) {
+	frames := []string{}
+	p := 100 / float64(len(img.Image))
+	for _, frame := range img.Image {
+		out, _ := ImageToASCII(frame, config)
+		frames = append(frames, out)
+		fmt.Printf("\rProcessing GIF frames: %.0f%%", float64(len(frames))*p)
+	}
+
+	fmt.Print("\x1b[2J")
+	for i := 0; img.LoopCount == 0 || i <= max(img.LoopCount, 0); i++ {
+		for j, frame := range frames {
+			time.Sleep(time.Duration(img.Delay[j]) * 10 * time.Millisecond)
+			fmt.Println("\x1b[H" + frame)
+		}
+	}
 }

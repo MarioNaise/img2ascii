@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"image/gif"
 	"os"
@@ -11,37 +10,33 @@ import (
 )
 
 func main() {
-	config := parseFlagsToConfig()
-
-	if len(config.CharMap) == 0 {
-		logFatal("character map cannot be empty")
-	}
+	flags := parseFlags()
 
 	var isStdin bool
 	if stat, err := os.Stdin.Stat(); err == nil {
 		isStdin = stat.Size() > 0
 	}
 
-	hasArgs := flag.NArg() > 0
+	hasArgs := cmd.NArg() > 0
 
 	if !hasArgs && !isStdin {
-		flag.Usage()
+		cmd.Usage()
 		return
 	}
 
 	if !hasArgs && isStdin {
-		processFiles([]*os.File{os.Stdin}, config)
+		handleStdin(flags)
 		return
 	}
 
 	files := []*os.File{}
 	errs := []error{}
-	for _, arg := range flag.Args() {
-		if filepath.Ext(arg) == ".gif" {
-			if flag.NArg() > 1 {
+	for _, arg := range cmd.Args() {
+		if filepath.Ext(arg) == ".gif" && flags.animate {
+			if cmd.NArg() > 1 {
 				logFatal("can only process one gif")
 			} else {
-				processGIF(arg, config)
+				processGIF(arg, flags)
 				return
 			}
 		}
@@ -52,12 +47,24 @@ func main() {
 		}
 		files = append(files, file)
 	}
-	errs = append(errs, processFiles(files, config)...)
+	errs = append(errs, processFiles(files, flags)...)
 
 	logAll(errs)
 }
 
-func processGIF(path string, config i2a.Config) {
+func handleStdin(flags flagConfig) {
+	if flags.animate {
+		img, err := gif.DecodeAll(os.Stdin)
+		if err != nil {
+			logFatal(fmt.Sprintf("unable to decode gif: %v", err))
+		}
+		config := flags.toI2AConfig(img.Config.Height, img.Config.Width)
+		i2a.RenderGIF(img, config)
+	}
+	processFiles([]*os.File{os.Stdin}, flags)
+}
+
+func processGIF(path string, flags flagConfig) {
 	file, err := os.Open(path)
 	if err != nil {
 		logFatal(fmt.Sprintf("unable to open file: %v", err))
@@ -66,11 +73,12 @@ func processGIF(path string, config i2a.Config) {
 	if err != nil {
 		logFatal(fmt.Sprintf("unable to decode gif %s: %v", file.Name(), err))
 	}
+	config := flags.toI2AConfig(img.Config.Height, img.Config.Width)
 
 	i2a.RenderGIF(img, config)
 }
 
-func processFiles(files []*os.File, config i2a.Config) []error {
+func processFiles(files []*os.File, flags flagConfig) []error {
 	errs := []error{}
 	for _, file := range files {
 		defer file.Close()
@@ -79,6 +87,7 @@ func processFiles(files []*os.File, config i2a.Config) []error {
 			errs = append(errs, fmt.Errorf("unable to decode %s: %v", file.Name(), err))
 			continue
 		}
+		config := flags.toI2AConfig(img.Bounds().Dy(), img.Bounds().Dx())
 		out, _ := i2a.ImageToASCII(img, config)
 		fmt.Println(out)
 	}

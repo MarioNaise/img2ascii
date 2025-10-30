@@ -6,14 +6,15 @@ import (
 	"math"
 )
 
-// ToAnsiColorString converts a string to an ANSI RGB truecolor escape code
-func ToAnsiColorString(s string, c color.Color) string {
+// Colorize returns the input string wrapped in an ANSI escape sequence
+// that sets the color based on the provided color c.
+// If trueColor is true, it uses 24-bit RGB (true color) values.
+// Otherwise, it uses the 256-color ANSI palette.
+func Colorize(s string, c color.Color, trueColor bool) string {
 	r, g, b, _ := c.RGBA()
-	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", r>>8, g>>8, b>>8, s)
-}
-
-// ToAnsi256ColorString converts a string to an ANSI 256 color escape code
-func ToAnsi256ColorString(s string, c color.Color) string {
+	if trueColor {
+		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", r>>8, g>>8, b>>8, s)
+	}
 	return fmt.Sprintf("\x1b[38;5;%dm%s\x1b[0m", toAnsi256(c), s)
 }
 

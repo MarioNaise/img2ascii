@@ -10,6 +10,8 @@ import (
 	_ "image/png"
 	"io"
 	"math"
+	"runtime"
+	"sync"
 	"time"
 
 	_ "golang.org/x/image/bmp"
@@ -32,6 +34,8 @@ type Config struct {
 	// CharMap is the slice of runes used to represent different brightness levels.
 	// It should be ordered from lightest to darkest.
 	CharMap []rune
+	// Height is the desired height of the output in characters.
+	Height int
 	// Width is the desired width of the output in characters.
 	Width int
 	// Color indicates whether colored output is enabled.
@@ -47,33 +51,29 @@ func (e ConfigError) Error() string { return string(e) }
 
 // ImageToASCII converts the given image to an ASCII art representation based on the provided configuration.
 // The height is calculated to maintain the aspect ratio, considering character dimensions.
-// If it returns an error, it will be of type ConfigError.
+// If it returns an error, it will be of type [ConfigError].
 func ImageToASCII(img image.Image, config Config) (string, error) {
 	if len(config.CharMap) == 0 {
 		return "", ConfigError("CharMap cannot be empty")
 	}
 
-	transformFn := func(s string, _ color.Color) string { return s }
-	switch {
-	case config.Color && config.TrueColor:
-		transformFn = ToAnsiColorString
-	case config.Color:
-		transformFn = ToAnsi256ColorString
-	}
-
 	width := config.Width
+	height := config.Height
 
 	bounds := img.Bounds()
 	imgW := bounds.Dx()
 	imgH := bounds.Dy()
-	height := width * imgH / imgW / 2
 
 	var out string
 	for y := range height {
 		for x := range width {
 			col := img.At(x*imgW/width, y*imgH/height)
 			val := colorToChar(col, config.CharMap)
-			out += transformFn(val, col)
+			if config.Color {
+				out += Colorize(val, col, config.TrueColor)
+			} else {
+				out += val
+			}
 		}
 		if y != height-1 {
 			out += "\n"
@@ -90,13 +90,25 @@ func colorToChar(col color.Color, charMap []rune) string {
 
 // RenderGIF renders the provided GIF image to the terminal as ASCII art based on the given configuration.
 func RenderGIF(img *gif.GIF, config Config) {
-	frames := []string{}
+	var wg sync.WaitGroup
+	numCPU := runtime.NumCPU()
+	frames := make([]string, len(img.Image))
 	p := 100 / float64(len(img.Image))
-	for _, frame := range img.Image {
-		out, _ := ImageToASCII(frame, config)
-		frames = append(frames, out)
-		fmt.Printf("\rProcessing GIF frames: %.0f%%", float64(len(frames))*p)
+
+	for i, frame := range img.Image {
+		wg.Add(1)
+		go func() {
+			out, _ := ImageToASCII(frame, config)
+			frames[i] = out
+			wg.Done()
+		}()
+
+		if (i+1)%numCPU == 0 {
+			fmt.Printf("\rProcessing GIF frames: %.0f%%", float64(i)*p)
+			wg.Wait()
+		}
 	}
+	wg.Wait()
 
 	fmt.Print("\x1b[2J")
 	for i := 0; img.LoopCount == 0 || i <= max(img.LoopCount, 0); i++ {

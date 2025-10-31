@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,7 +33,7 @@ func Decode(r io.Reader) (image.Image, error) {
 // Config holds the configuration options for image to ASCII conversion.
 type Config struct {
 	// CharMap is the slice of runes used to represent different brightness levels.
-	// It should be ordered from lightest to darkest.
+	// It should be ordered from darkest to lightest.
 	CharMap []rune
 	// Height is the desired height of the output in characters.
 	Height int
@@ -49,12 +50,21 @@ type ConfigError string
 
 func (e ConfigError) Error() string { return string(e) }
 
+var errorEmptyCharMap = ConfigError("CharMap cannot be empty")
+
+func (config Config) validate() error {
+	if len(config.CharMap) == 0 {
+		return errorEmptyCharMap
+	}
+	return nil
+}
+
 // ImageToASCII converts the given image to an ASCII art representation based on the provided configuration.
-// The height is calculated to maintain the aspect ratio, considering character dimensions.
 // If it returns an error, it will be of type [ConfigError].
 func ImageToASCII(img image.Image, config Config) (string, error) {
-	if len(config.CharMap) == 0 {
-		return "", ConfigError("CharMap cannot be empty")
+	err := config.validate()
+	if err != nil {
+		return "", err
 	}
 
 	width := config.Width
@@ -64,22 +74,20 @@ func ImageToASCII(img image.Image, config Config) (string, error) {
 	imgW := bounds.Dx()
 	imgH := bounds.Dy()
 
-	var out string
+	out := make([]string, height)
+
 	for y := range height {
 		for x := range width {
 			col := img.At(x*imgW/width, y*imgH/height)
 			val := colorToChar(col, config.CharMap)
 			if config.Color {
-				out += Colorize(val, col, config.TrueColor)
+				out[y] += Colorize(val, col, config.TrueColor)
 			} else {
-				out += val
+				out[y] += val
 			}
 		}
-		if y != height-1 {
-			out += "\n"
-		}
 	}
-	return out, nil
+	return strings.Join(out, "\n"), nil
 }
 
 func colorToChar(col color.Color, charMap []rune) string {
@@ -89,24 +97,33 @@ func colorToChar(col color.Color, charMap []rune) string {
 }
 
 // RenderGIF renders the provided GIF image to the terminal as ASCII art based on the given configuration.
-func RenderGIF(img *gif.GIF, config Config) {
-	var wg sync.WaitGroup
+// If it returns an error, it will be of type [ConfigError].
+func RenderGIF(img *gif.GIF, config Config) error {
+	err := config.validate()
+	if err != nil {
+		return err
+	}
+
+	var (
+		processed int
+		wg        sync.WaitGroup
+	)
+
+	a := len(img.Image)
 	numCPU := runtime.NumCPU()
-	frames := make([]string, len(img.Image))
-	p := 100 / float64(len(img.Image))
+	frames := make([]string, a)
 
-	for i, frame := range img.Image {
+	for nc := range numCPU {
 		wg.Add(1)
-		go func() {
-			out, _ := ImageToASCII(frame, config)
-			frames[i] = out
+		go func(i, n int) {
+			for ; i < n; i++ {
+				out, _ := ImageToASCII(img.Image[i], config)
+				frames[i] = out
+				processed++
+				fmt.Printf("\rProcessing GIF frames: %2.0f%%", float32(processed*100/a))
+			}
 			wg.Done()
-		}()
-
-		if (i+1)%numCPU == 0 {
-			fmt.Printf("\rProcessing GIF frames: %.0f%%", float64(i)*p)
-			wg.Wait()
-		}
+		}(nc*a/numCPU, (nc+1)*a/numCPU)
 	}
 	wg.Wait()
 
@@ -117,4 +134,5 @@ func RenderGIF(img *gif.GIF, config Config) {
 			fmt.Println("\x1b[H" + frame)
 		}
 	}
+	return nil
 }

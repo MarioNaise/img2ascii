@@ -10,6 +10,12 @@ import (
 
 var cmd = flag.NewFlagSet("img2ascii", flag.ExitOnError)
 
+func usage() {
+	cmd.Output().Write([]byte("Usage:\n  img2ascii [flags] <image file>...\n\nFlags:\n"))
+	cmd.PrintDefaults()
+	cmd.Output().Write([]byte("  -h, -help\n\tShow this help message\n"))
+}
+
 type flagConfig struct {
 	charMap   string
 	height    int
@@ -21,8 +27,11 @@ type flagConfig struct {
 }
 
 func parseFlags() flagConfig {
+	cmd.SetOutput(os.Stdout)
+	cmd.Usage = usage
+
 	charmap := cmd.String("map", " .-:=+*#%@$", "Characters to use for mapping brightness levels")
-	height := cmd.Int("height", 0, "Height of the output in characters\nDefaults to stdout height or 0 if it cannot be determined\n(exg. when output is redirected to a file)")
+	height := cmd.Int("height", 0, "Height of the output in characters")
 	width := cmd.Int("width", 0, "Width of the output in characters")
 	full := cmd.Bool("full", false, "Use full terminal width (overrides -width and -height)")
 	color := cmd.Bool("color", false, "Enable colored output")

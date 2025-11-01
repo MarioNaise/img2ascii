@@ -89,7 +89,7 @@ func processFiles(files []*os.File, flags flagConfig) []error {
 		}
 		config := flags.toI2AConfig(img.Bounds().Dy(), img.Bounds().Dx())
 		out, _ := i2a.ImageToASCII(img, config)
-		fmt.Println(out)
+		fmt.Print(out)
 	}
 	return errs
 }

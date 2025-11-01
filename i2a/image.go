@@ -74,26 +74,34 @@ func ImageToASCII(img image.Image, config Config) (string, error) {
 	imgW := bounds.Dx()
 	imgH := bounds.Dy()
 
-	out := make([]string, height)
+	size := 1
+	if config.Color {
+		size += len([]rune(Colorize("", color.White, config.TrueColor)))
+	}
+
+	var b strings.Builder
+	b.Grow(size*height*width + height)
 
 	for y := range height {
 		for x := range width {
 			col := img.At(x*imgW/width, y*imgH/height)
 			val := colorToChar(col, config.CharMap)
 			if config.Color {
-				out[y] += Colorize(val, col, config.TrueColor)
+				b.WriteString(Colorize(string(val), col, config.TrueColor))
 			} else {
-				out[y] += val
+				b.WriteRune(val)
 			}
 		}
+		b.WriteRune('\n')
 	}
-	return strings.Join(out, "\n"), nil
+
+	return b.String(), nil
 }
 
-func colorToChar(col color.Color, charMap []rune) string {
+func colorToChar(col color.Color, charMap []rune) rune {
 	r, g, b, _ := col.RGBA()
 	index := int(math.Round(float64(r+g+b) / 3 * float64(len(charMap)-1) / 0xffff))
-	return string(charMap[index])
+	return charMap[index]
 }
 
 // RenderGIF renders the provided GIF image to the terminal as ASCII art based on the given configuration.
@@ -120,18 +128,19 @@ func RenderGIF(img *gif.GIF, config Config) error {
 				out, _ := ImageToASCII(img.Image[i], config)
 				frames[i] = out
 				processed++
-				fmt.Printf("\rProcessing GIF frames: %2.0f%%", float32(processed*100/a))
+				fmt.Printf("\rProcessing GIF frames: %3.0f%%", float32(processed*100/a))
 			}
 			wg.Done()
 		}(nc*a/numCPU, (nc+1)*a/numCPU)
 	}
 	wg.Wait()
+	fmt.Print("\r                           \r")
 
 	fmt.Print("\x1b[2J")
 	for i := 0; img.LoopCount == 0 || i <= max(img.LoopCount, 0); i++ {
 		for j, frame := range frames {
 			time.Sleep(time.Duration(img.Delay[j]) * 10 * time.Millisecond)
-			fmt.Println("\x1b[H" + frame)
+			fmt.Print("\x1b[H" + frame)
 		}
 	}
 	return nil

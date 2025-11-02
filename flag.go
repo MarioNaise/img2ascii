@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"os"
 
@@ -11,7 +12,7 @@ import (
 var cmd = flag.NewFlagSet("img2ascii", flag.ExitOnError)
 
 func usage() {
-	cmd.Output().Write([]byte("Usage:\n  img2ascii [flags] <image file>...\n\nFlags:\n"))
+	cmd.Output().Write([]byte("Usage:\n  img2ascii [OPTIONS] [FILES...]\n\nOptions:\n"))
 	cmd.PrintDefaults()
 	cmd.Output().Write([]byte("  -h, -help\n\tShow this help message\n"))
 }
@@ -40,15 +41,11 @@ func parseFlags() flagConfig {
 
 	cmd.Parse(os.Args[1:])
 
-	if len(*charmap) == 0 {
-		logFatal("character map cannot be empty")
-	}
-
 	if *height != 0 && *width != 0 {
 		logFatal("cannot set both height and width")
 	}
 
-	return flagConfig{
+	f := flagConfig{
 		charMap:   *charmap,
 		height:    *height,
 		width:     *width,
@@ -57,9 +54,21 @@ func parseFlags() flagConfig {
 		full:      *full,
 		animate:   *animate,
 	}
+	c, _ := f.toI2AConfig(1, 1)
+	err := c.Validate()
+	if err != nil {
+		logFatal(err)
+	}
+	return f
 }
 
-func (f flagConfig) toI2AConfig(imgHeight int, imgWidth int) i2a.Config {
+var errImgDim = errors.New("image dimensions must be greater than zero")
+
+func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error) {
+	if imgWidth <= 0 || imgHeight <= 0 {
+		return i2a.Config{}, errImgDim
+	}
+
 	var outWidth int
 	var outHeight int
 
@@ -91,7 +100,7 @@ func (f flagConfig) toI2AConfig(imgHeight int, imgWidth int) i2a.Config {
 		Height:    outHeight,
 		Color:     f.color,
 		TrueColor: f.trueColor,
-	}
+	}, nil
 }
 
 func getTerminalSize() (int, int) {

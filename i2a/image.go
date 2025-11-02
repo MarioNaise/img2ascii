@@ -2,6 +2,7 @@
 package i2a
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -46,23 +47,28 @@ type Config struct {
 	TrueColor bool
 }
 
-type ConfigError string
+var (
+	errEmptyCharMap = errors.New("charmap cannot be empty")
+	errNegWidth     = errors.New("width must be greater than zero")
+	errNegHeight    = errors.New("height must be greater than zero")
+)
 
-func (e ConfigError) Error() string { return string(e) }
-
-var errorEmptyCharMap = ConfigError("CharMap cannot be empty")
-
-func (config Config) validate() error {
-	if len(config.CharMap) == 0 {
-		return errorEmptyCharMap
+func (config Config) Validate() error {
+	switch {
+	case len(config.CharMap) == 0:
+		return errEmptyCharMap
+	case config.Width <= 0:
+		return errNegWidth
+	case config.Height <= 0:
+		return errNegHeight
+	default:
+		return nil
 	}
-	return nil
 }
 
 // ImageToASCII converts the given image to an ASCII art representation based on the provided configuration.
-// If it returns an error, it will be of type [ConfigError].
 func ImageToASCII(img image.Image, config Config) (string, error) {
-	err := config.validate()
+	err := config.Validate()
 	if err != nil {
 		return "", err
 	}
@@ -82,6 +88,7 @@ func ImageToASCII(img image.Image, config Config) (string, error) {
 	var b strings.Builder
 	b.Grow(size*height*width + height)
 
+	// TODO: resize image properly
 	for y := range height {
 		for x := range width {
 			col := img.At(x*imgW/width, y*imgH/height)
@@ -105,9 +112,8 @@ func colorToChar(col color.Color, charMap []rune) rune {
 }
 
 // RenderGIF renders the provided GIF image to the terminal as ASCII art based on the given configuration.
-// If it returns an error, it will be of type [ConfigError].
 func RenderGIF(img *gif.GIF, config Config) error {
-	err := config.validate()
+	err := config.Validate()
 	if err != nil {
 		return err
 	}
@@ -125,6 +131,7 @@ func RenderGIF(img *gif.GIF, config Config) error {
 		wg.Add(1)
 		go func(i, n int) {
 			for ; i < n; i++ {
+				// TODO: handle sub-images properly
 				out, _ := ImageToASCII(img.Image[i], config)
 				frames[i] = out
 				processed++
@@ -136,11 +143,12 @@ func RenderGIF(img *gif.GIF, config Config) error {
 	wg.Wait()
 	fmt.Print("\r                           \r")
 
-	fmt.Print("\x1b[2J")
+	fmt.Print("\x1b[?25l\x1b[2J")
+	defer fmt.Print("\x1b[?25h")
 	for i := 0; img.LoopCount == 0 || i <= max(img.LoopCount, 0); i++ {
 		for j, frame := range frames {
-			time.Sleep(time.Duration(img.Delay[j]) * 10 * time.Millisecond)
 			fmt.Print("\x1b[H" + frame)
+			time.Sleep(time.Duration(img.Delay[j]) * 10 * time.Millisecond)
 		}
 	}
 	return nil

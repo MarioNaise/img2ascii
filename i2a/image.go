@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -91,7 +92,7 @@ func ImageToASCII(img image.Image, config Config) (string, error) {
 	// TODO: resize image properly
 	for y := range height {
 		for x := range width {
-			col := img.At(x*imgW/width, y*imgH/height)
+			col := img.At((x*imgW/width)+bounds.Min.X, (y*imgH/height)+bounds.Min.Y)
 			val := colorToChar(col, config.CharMap)
 			if config.Color {
 				b.WriteString(Colorize(string(val), col, config.TrueColor))
@@ -124,6 +125,8 @@ func RenderGIF(img *gif.GIF, config Config) error {
 	)
 
 	a := len(img.Image)
+	subImages := createGIFSubImages(img)
+
 	numCPU := runtime.NumCPU()
 	frames := make([]string, a)
 
@@ -131,8 +134,8 @@ func RenderGIF(img *gif.GIF, config Config) error {
 		wg.Add(1)
 		go func(i, n int) {
 			for ; i < n; i++ {
-				// TODO: handle sub-images properly
-				out, _ := ImageToASCII(img.Image[i], config)
+				var out string
+				out, _ = ImageToASCII(subImages[i], config)
 				frames[i] = out
 				processed++
 				fmt.Printf("\rProcessing GIF frames: %3.0f%%", float32(processed*100/a))
@@ -152,4 +155,38 @@ func RenderGIF(img *gif.GIF, config Config) error {
 		}
 	}
 	return nil
+}
+
+// createGIFSubImages creates full frames for each sub-image in the GIF, taking disposal methods into account.
+func createGIFSubImages(img *gif.GIF) []image.Image {
+	a := len(img.Image)
+	subImages := make([]image.Image, a)
+
+	bounds := image.Rect(0, 0, img.Config.Width, img.Config.Height)
+	canvas := image.NewRGBA(bounds)
+
+	draw.Draw(canvas, bounds, img.Image[0], image.Point{}, draw.Src)
+
+	prevState := image.NewRGBA(bounds)
+
+	for i, frame := range img.Image {
+		draw.Draw(canvas, bounds, frame, image.Point{}, draw.Over)
+
+		currentFrame := image.NewRGBA(bounds)
+		draw.Draw(currentFrame, bounds, canvas, image.Point{}, draw.Src)
+		subImages[i] = currentFrame
+
+		switch img.Disposal[i] {
+		case gif.DisposalPrevious:
+			draw.Draw(canvas, bounds, prevState, image.Point{}, draw.Src)
+		case gif.DisposalBackground:
+			draw.Draw(canvas, frame.Bounds(), image.NewUniform(color.Transparent), image.Point{}, draw.Src)
+			fallthrough
+		case gif.DisposalNone:
+			fallthrough
+		default:
+			draw.Draw(prevState, bounds, canvas, image.Point{}, draw.Src)
+		}
+	}
+	return subImages
 }

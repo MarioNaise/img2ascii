@@ -37,15 +37,19 @@ type Config struct {
 	// CharMap is the slice of runes used to represent different brightness levels.
 	// It should be ordered from darkest to lightest.
 	CharMap []rune
-	// Height is the desired height of the output in characters.
-	Height int
 	// Width is the desired width of the output in characters.
 	Width int
+	// Height is the desired height of the output in characters.
+	Height int
 	// Color indicates whether colored output is enabled.
 	Color bool
 	// TrueColor indicates whether RGB truecolor output is enabled.
 	// Only effective if Color is true.
 	TrueColor bool
+	// Transparent indicates whether to treat transparent pixels as spaces.
+	Transparent bool
+	// Background indicates whether to use background colors instead of foreground colors.
+	Background bool
 }
 
 var (
@@ -83,7 +87,7 @@ func ImageToASCII(img image.Image, config Config) (string, error) {
 
 	size := 1
 	if config.Color {
-		size += len([]rune(Colorize("", color.White, config.TrueColor)))
+		size = len(Colorize(' ', color.White, config.TrueColor, false, false))
 	}
 
 	var b strings.Builder
@@ -95,7 +99,7 @@ func ImageToASCII(img image.Image, config Config) (string, error) {
 			col := img.At((x*imgW/width)+bounds.Min.X, (y*imgH/height)+bounds.Min.Y)
 			val := colorToChar(col, config.CharMap)
 			if config.Color {
-				b.WriteString(Colorize(string(val), col, config.TrueColor))
+				b.WriteString(Colorize(val, col, config.TrueColor, config.Transparent, config.Background))
 			} else {
 				b.WriteRune(val)
 			}

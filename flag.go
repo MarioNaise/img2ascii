@@ -18,13 +18,18 @@ func usage() {
 }
 
 type flagConfig struct {
-	charMap   string
-	height    int
-	width     int
-	color     bool
-	trueColor bool
-	full      bool
-	animate   bool
+	// image config
+	charMap     string
+	width       int
+	height      int
+	color       bool
+	trueColor   bool
+	background  bool
+	transparent bool
+
+	// cli flags
+	full    string
+	animate bool
 }
 
 func parseFlags() flagConfig {
@@ -32,27 +37,41 @@ func parseFlags() flagConfig {
 	cmd.Usage = usage
 
 	charmap := cmd.String("map", " .-:=+*#%@$", "Characters to use for mapping brightness levels")
-	height := cmd.Int("height", 0, "Height of the output in characters")
 	width := cmd.Int("width", 0, "Width of the output in characters")
-	full := cmd.Bool("full", false, "Use full terminal width (overrides -width and -height)")
+	height := cmd.Int("height", 0, "Height of the output in characters")
 	color := cmd.Bool("color", false, "Enable colored output")
-	truecolor := cmd.Bool("truecolor", os.Getenv("COLORTERM") == "truecolor", "Use RGB truecolor for output (requires -color)\nDefaults to true if COLORTERM=truecolor is set in the environment")
+	truecolor := cmd.Bool("truecolor", os.Getenv("COLORTERM") == "truecolor",
+		"Use RGB truecolor for output (requires -color)\nDefaults to true if COLORTERM=truecolor is set in the environment")
+	transparent := cmd.Bool("transparent", false, "Treat transparent pixels as spaces")
+	background := cmd.Bool("bg", false, "Use background colors instead of foreground colors (requires -color)")
+
+	full := cmd.String("full", "",
+		`Use full terminal dimensions
+This is the default, if no other dimension options are provided.
+Defaults to either 'w' or 'h', depending on terminal and image size.
+Overrides -width and -height
+Options:
+ - 'w': full width
+ - 'h': full height
+ - 'term': full terminal size (ignoring image aspect ratio)`)
 	animate := cmd.Bool("animate", true, "Animate GIF images (allows only single input file)")
 
 	cmd.Parse(os.Args[1:])
 
-	if *height != 0 && *width != 0 {
-		logFatal("cannot set both height and width")
+	if *full != "" && *full != "w" && *full != "h" && *full != "term" {
+		logFatal("invalid value for -full; must be one of 'w', 'h', or 'term'")
 	}
 
 	f := flagConfig{
-		charMap:   *charmap,
-		height:    *height,
-		width:     *width,
-		color:     *color,
-		trueColor: *truecolor,
-		full:      *full,
-		animate:   *animate,
+		charMap:     *charmap,
+		width:       *width,
+		height:      *height,
+		color:       *color,
+		trueColor:   *truecolor,
+		transparent: *transparent,
+		background:  *background,
+		animate:     *animate,
+		full:        *full,
 	}
 	c, _ := f.toI2AConfig(1, 1)
 	err := c.Validate()
@@ -78,11 +97,20 @@ func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error)
 	arImg := float64(imgWidth) / float64(imgHeight)
 
 	switch {
-	case arTerm < arImg && f.height == 0 && f.width == 0:
+	case f.full == "term":
+		outWidth = tw
+		outHeight = th - 1
+	case f.full == "h":
+		outHeight = th - 1
+		outWidth = (th - 1) * imgWidth * 2 / imgHeight
+	case f.full == "w":
 		fallthrough
-	case f.full:
+	case arTerm < arImg && f.height == 0 && f.width == 0:
 		outWidth = tw
 		outHeight = tw * imgHeight / imgWidth / 2
+	case f.width != 0 && f.height != 0:
+		outWidth = f.width
+		outHeight = f.height
 	case f.width != 0:
 		outWidth = f.width
 		outHeight = f.width * imgHeight / imgWidth / 2
@@ -95,11 +123,13 @@ func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error)
 	}
 
 	return i2a.Config{
-		CharMap:   []rune(f.charMap),
-		Width:     outWidth,
-		Height:    outHeight,
-		Color:     f.color,
-		TrueColor: f.trueColor,
+		CharMap:     []rune(f.charMap),
+		Width:       outWidth,
+		Height:      outHeight,
+		Color:       f.color,
+		TrueColor:   f.trueColor,
+		Transparent: f.transparent,
+		Background:  f.background,
 	}, nil
 }
 

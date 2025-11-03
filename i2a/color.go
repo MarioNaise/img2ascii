@@ -6,16 +6,27 @@ import (
 	"math"
 )
 
-// Colorize returns the input string wrapped in an ANSI escape sequence
-// that sets the color based on the provided color c.
+// Colorize returns the input character wrapped in an ANSI escape sequence
+// that sets the color based on the provided color col.
 // If trueColor is true, it uses 24-bit RGB (true color) values.
 // Otherwise, it uses the 256-color ANSI palette.
-func Colorize(s string, c color.Color, trueColor bool) string {
-	r, g, b, _ := c.RGBA()
-	if trueColor {
-		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", r>>8, g>>8, b>>8, s)
+// If transparent is true and the color is fully transparent, it returns a space character.
+// If background is true, it sets the background color instead of the foreground color.
+func Colorize(c rune, col color.Color, trueColor bool, transparent bool, background bool) string {
+	r, g, b, a := col.RGBA()
+	if transparent && a == 0 {
+		return " "
 	}
-	return fmt.Sprintf("\x1b[38;5;%dm%s\x1b[0m", toAnsi256(c), s)
+
+	var colorOffset byte = 38
+	if background {
+		colorOffset = 48
+	}
+
+	if trueColor {
+		return fmt.Sprintf("\x1b[%d;2;%d;%d;%dm%c\x1b[0m", colorOffset, r>>8, g>>8, b>>8, c)
+	}
+	return fmt.Sprintf("\x1b[%d;5;%dm%c\x1b[0m", colorOffset, toAnsi256(col), c)
 }
 
 func toAnsi256(c color.Color) byte {

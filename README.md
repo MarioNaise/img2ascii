@@ -11,7 +11,7 @@ Supported formats: JPEG, PNG, GIF, BMP, TIFF, and WebP
 - Support for animated GIFs with frame-by-frame ASCII rendering.
 - Support for colored and truecolor output.
 - Configurable output dimensions and rendering options.
-- Input via file paths or standard input (stdin).
+- Input via file paths, links or standard input.
 
 ## Installation
 
@@ -50,6 +50,8 @@ img2ascii path/to/image.jpg
 
 Render an animated GIF as ASCII:
 
+> NOTE: Animations can be aborted by pressing q, Esc or Space
+
 ```bash
 img2ascii path/to/animation.gif
 ```
@@ -87,12 +89,6 @@ img2ascii --help
 
 ## Examples
 
-Convert a single image:
-
-```bash
-img2ascii example.png
-```
-
 Use custom mapping:
 
 ```bash
@@ -108,13 +104,15 @@ img2ascii -color example.png
 Convert multiple files:
 
 ```bash
+# multiple images
 img2ascii path/to/image.jpg path/to/image.png
-img2ascii -animate=0 path/to/animations/*.gif
+# multiple gifs - animated
+img2ascii path/to/animations/*.gif
+# multiple gifs - not animated
+img2ascii -animate=0 path/to/animations/*.gif https://example.com/image.gif
 ```
 
 Write output to a file:
-
-> Note: width or height needs to be specified when redirecting output to a file.
 
 ```bash
 img2ascii -width 50 example.png > output.txt

@@ -117,16 +117,15 @@ func colorToChar(col color.Color, charMap []rune) rune {
 }
 
 // RenderGIF renders the provided GIF image to the terminal as ASCII art based on the given configuration.
-func RenderGIF(img *gif.GIF, config Config) error {
+// transform is a function that can be used to modify each frame's ASCII representation before rendering.
+// Rendering can be aborted by sending a signal to the abort channel.
+func RenderGIF(img *gif.GIF, config Config, transform func(string) string, abort <-chan struct{}) error {
 	err := config.Validate()
 	if err != nil {
 		return err
 	}
 
-	var (
-		processed int
-		wg        sync.WaitGroup
-	)
+	var wg sync.WaitGroup
 
 	a := len(img.Image)
 	subImages := createGIFSubImages(img)
@@ -134,28 +133,27 @@ func RenderGIF(img *gif.GIF, config Config) error {
 	numCPU := runtime.NumCPU()
 	frames := make([]string, a)
 
+	wg.Add(numCPU)
 	for nc := range numCPU {
-		wg.Add(1)
 		go func(i, n int) {
 			for ; i < n; i++ {
 				var out string
 				out, _ = ImageToASCII(subImages[i], config)
-				frames[i] = out
-				processed++
-				fmt.Printf("\rProcessing GIF frames: %3.0f%%", float32(processed*100/a))
+				frames[i] = transform(out)
 			}
 			wg.Done()
 		}(nc*a/numCPU, (nc+1)*a/numCPU)
 	}
 	wg.Wait()
-	fmt.Print("\r                           \r")
 
-	fmt.Print("\x1b[?25l\x1b[2J")
-	defer fmt.Print("\x1b[?25h")
 	for i := 0; img.LoopCount == 0 || i <= max(img.LoopCount, 0); i++ {
 		for j, frame := range frames {
-			fmt.Print("\x1b[H" + frame)
-			time.Sleep(time.Duration(img.Delay[j]) * 10 * time.Millisecond)
+			fmt.Print(frame)
+			select {
+			case <-abort:
+				return nil
+			case <-time.After(time.Duration(img.Delay[j]) * 10 * time.Millisecond):
+			}
 		}
 	}
 	return nil

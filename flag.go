@@ -41,7 +41,7 @@ func parseFlags() flagConfig {
 	height := cmd.Int("height", 0, "Height of the output in characters")
 	color := cmd.Bool("color", false, "Enable colored output")
 	truecolor := cmd.Bool("truecolor", os.Getenv("COLORTERM") == "truecolor",
-		"Use RGB truecolor for output (requires -color)\nDefaults to true if COLORTERM=truecolor is set in the environment")
+		"Use RGB truecolor for output (requires -color)\nDefaults to true if COLORTERM=truecolor")
 	transparent := cmd.Bool("transparent", false, "Treat transparent pixels as spaces")
 	background := cmd.Bool("bg", false, "Use background colors instead of foreground colors (requires -color)")
 
@@ -54,7 +54,7 @@ Options:
  - 'w': full width
  - 'h': full height
  - 'term': full terminal size (ignoring image aspect ratio)`)
-	animate := cmd.Bool("animate", true, "Animate GIF images (allows only single input file)")
+	animate := cmd.Bool("animate", true, "Animate GIF images\nAnimations can be aborted by pressing q, Esc or Space")
 
 	cmd.Parse(os.Args[1:])
 
@@ -83,7 +83,7 @@ Options:
 
 var errImgDim = errors.New("image dimensions must be greater than zero")
 
-func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error) {
+func (f flagConfig) toI2AConfig(imgWidth, imgHeight int) (i2a.Config, error) {
 	if imgWidth <= 0 || imgHeight <= 0 {
 		return i2a.Config{}, errImgDim
 	}
@@ -92,6 +92,7 @@ func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error)
 	var outHeight int
 
 	tw, th := getTerminalSize()
+	th -= 1 // leave space for prompt
 
 	arTerm := float64(tw) / float64(th) / 2
 	arImg := float64(imgWidth) / float64(imgHeight)
@@ -99,10 +100,10 @@ func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error)
 	switch {
 	case f.full == "term":
 		outWidth = tw
-		outHeight = th - 1
+		outHeight = th
 	case f.full == "h":
-		outHeight = th - 1
-		outWidth = (th - 1) * imgWidth * 2 / imgHeight
+		outHeight = th
+		outWidth = th * imgWidth * 2 / imgHeight
 	case f.full == "w":
 		fallthrough
 	case arTerm < arImg && f.height == 0 && f.width == 0:
@@ -118,8 +119,8 @@ func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error)
 		outHeight = f.height
 		outWidth = f.height * imgWidth * 2 / imgHeight
 	default:
-		outHeight = th - 1
-		outWidth = (th - 1) * imgWidth * 2 / imgHeight
+		outHeight = th
+		outWidth = th * imgWidth * 2 / imgHeight
 	}
 
 	return i2a.Config{
@@ -134,8 +135,9 @@ func (f flagConfig) toI2AConfig(imgWidth int, imgHeight int) (i2a.Config, error)
 }
 
 func getTerminalSize() (int, int) {
-	if tw, th, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
-		return tw, th
+	tw, th, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		tw, th, _ = term.GetSize(int(os.Stdin.Fd()))
 	}
-	return 0, 0
+	return tw, th
 }
